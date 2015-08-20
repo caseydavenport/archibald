@@ -88,7 +88,6 @@ class YHandler(object):
 		return response
 
 	def refresh_token(self):
-                print "Refreshing Token"
 		oauth_hook = OAuthHook(access_token=self.authd['oauth_token'], access_token_secret=self.authd['oauth_token_secret'], consumer_key=self.authd['consumer_key'], consumer_secret=self.authd['consumer_secret'])
 		request = requests.Request("POST", GET_TOKEN_URL, {'oauth_session_handle': self.authd['oauth_session_handle']})
                 request = oauth_hook(request)
@@ -111,7 +110,6 @@ class YHandler(object):
 		base_url = 'http://fantasysports.yahooapis.com/fantasy/v2/'
 		url = base_url + querystring
 		self.refresh_token()
-                print "Querying URL: %s" % url
 		if ('oauth_token' not in self.authd) or \
 			('oauth_token_secret' not in self.authd) or \
 			(not (self.authd['oauth_token'] and self.authd['oauth_token_secret'])):
@@ -122,5 +120,6 @@ class YHandler(object):
 			query = self.call_api(url, req_meth, data=data, headers=headers)
 		if query.status_code != 200:
 			print "Query failed: %s" % query.status_code
+			print query.text
 			raise AuthException()
 		return query
