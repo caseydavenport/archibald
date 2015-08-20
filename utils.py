@@ -2,7 +2,6 @@ GET_TOKEN_URL = 'https://api.login.yahoo.com/oauth/v2/get_token'
 AUTHORIZATION_URL = 'https://api.login.yahoo.com/oauth/v2/request_auth'
 REQUEST_TOKEN_URL = 'https://api.login.yahoo.com/oauth/v2/get_request_token'
 CALLBACK_URL = 'oob'
-BASE_URL="https://query.yahooapis.com/v1/public/"
 
 GAME_KEY=348
 LEAGUE_NO=697783
@@ -12,9 +11,18 @@ POSITIONS = ['RB', 'WR', 'DEF', 'RB', 'DEF', 'RB', 'QB', 'QB', 'TE', 'K,' 'TE', 
 # Generate the league ID
 LEAGUE_ID="%s.l.%s" % (GAME_KEY, LEAGUE_NO)
 
+# Player statuses
+ALL = "A"
+FREE_AGENT = "FA"
+WAIVER = "W"
+TAKEN = "T"
+KEEPERS = "K"
+
 # Query strings
 TEAMS_QUERY="leagues;league_keys=%s/teams?format=json" % LEAGUE_ID
-PLAYERS_QUERY = "league/%s/players?format=json" % LEAGUE_ID 
+TEAMS_QUERY="leagues;league_keys=%s/teams?format=json" % LEAGUE_ID
+ALL_PLAYERS_QUERY = "league/%s/players?format=json" % LEAGUE_ID 
+STATUS_PLAYERS_QUERY = "league/%s/players;status=%s"
 TEAM_PLAYERS_QUERY = "team/%s/players?format=json"   # %s = team_key
 XACTION_URL = "league/%s/transactions" % LEAGUE_ID
 
