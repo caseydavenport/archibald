@@ -6,7 +6,18 @@ CALLBACK_URL = 'oob'
 GAME_KEY=348
 LEAGUE_NO=697783
 
-POSITIONS = ['RB', 'WR', 'DEF', 'RB', 'DEF', 'RB', 'QB', 'QB', 'TE', 'K,' 'TE', 'WR', 'WR', 'RB', 'WR']
+# Positions, and the nubmer of each per-team.
+POSITIONS = {
+	'RB':  1, 
+	'W/R/T': 1,
+	'WR':  2, 
+	'DEF': 1,
+	'BN':  1, 
+	'QB':  1, 
+	'TE':  1,
+	'K,': 1,
+	'BN': 5,
+}
 
 # Generate the league ID
 LEAGUE_ID="%s.l.%s" % (GAME_KEY, LEAGUE_NO)
@@ -18,8 +29,7 @@ WAIVER = "W"
 TAKEN = "T"
 KEEPERS = "K"
 
-# Query strings
-TEAMS_QUERY="leagues;league_keys=%s/teams?format=json" % LEAGUE_ID
+# API URLs
 TEAMS_QUERY="leagues;league_keys=%s/teams?format=json" % LEAGUE_ID
 ALL_PLAYERS_QUERY = "league/%s/players?format=json" % LEAGUE_ID 
 STATUS_PLAYERS_QUERY = "league/%s/players;status=%s"
@@ -53,6 +63,30 @@ DEL_PLAYER_XML = """<?xml version='1.0'?>
         <source_team_key>%s</source_team_key>  
       </transaction_data>  
     </player>  
+  </transaction>  
+</fantasy_content>
+"""
+
+ADD_DROP_XML = """<?xml version='1.0'?>
+<fantasy_content>  
+  <transaction>  
+    <type>add/drop</type>  
+    <players>  
+      <player>  
+        <player_key>%s</player_key>  
+        <transaction_data>  
+          <type>add</type>  
+          <destination_team_key>%s</destination_team_key>  
+        </transaction_data>  
+      </player>  
+      <player>  
+        <player_key>%s</player_key>  
+        <transaction_data>  
+          <type>drop</type>  
+          <source_team_key>%s</source_team_key>  
+        </transaction_data>  
+      </player>  
+    </players>  
   </transaction>  
 </fantasy_content>
 """
