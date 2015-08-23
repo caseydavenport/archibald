@@ -13,7 +13,12 @@ REQUEST_TOKEN_URL = 'https://api.login.yahoo.com/oauth/v2/get_request_token'
 CALLBACK_URL = 'oob'
 
 class AuthException(Exception):
-	pass
+	def __init__(self, status, text):
+		self.status = status
+		self.text = text
+
+	def __str__(self):
+		return "Code %s: \n%s" % (self.status, self.text)
 
 class YHandler(object):
 
@@ -60,39 +65,55 @@ class YHandler(object):
 		self.get_login_token()
 
 	def get_login_token(self):
-		#oauth_hook = OAuthHook(access_token=self.authd['oauth_token'], 
-	#			access_token_secret=self.authd['oauth_token_secret'], 
-#				consumer_key=self.authd['consumer_key'], 
-#				consumer_secret=self.authd['consumer_secret'])
-                signature = "%s%%26%s" % (self.authd['consumer_secret'], self.authd['oauth_token_secret'])
+		# Generate values used in request.
+                signature = "%s%%26%s" % (self.authd['consumer_secret'], 
+					self.authd['oauth_token_secret'])
                 timestamp = int(time.time())
-                FMT = "%s?oauth_consumer_key=%s&oauth_signature_method=PLAINTEXT&oauth_verion=1.0&oauth_verifier=%s&oauth_token=%s&oauth_signature=%s&oauth_timestamp=%s&oauth_nonce=1228169662"
+
+		# Generate the URL to use for this request.
+                FMT = "%s?oauth_consumer_key=%s&oauth_signature_method=PLAINTEXT&" \
+			"oauth_verion=1.0&oauth_verifier=%s&oauth_token=%s" \
+			"&oauth_signature=%s&oauth_timestamp=%s&oauth_nonce=1228169662"
                 URL = FMT % (GET_TOKEN_URL,
 			self.authd['consumer_key'],
 			self.authd['oauth_verifier'],
 			self.authd['oauth_token'],
                         signature, timestamp)
           
+		# Send a request for a Token using the above URL.
 		req = requests.Request('POST', URL) 
-		#req = oauth_hook(req)
 		req.headers.update({'oauth_verifier': self.authd['oauth_verifier']})
 		session = requests.session()
 		response = session.send(req.prepare())
 
+		# Parse response, write to file.
 		qs = parse_qs(response.content)
-		print ("Get login token: %s" % qs)
-		
 		self.authd.update(map(lambda d: (d[0], (d[1][0])), qs.items()))
 		self.write_authvals_csv(self.authd, self.authf)
-		print("Login token response: %s" % response)
 		return response
 
 	def refresh_token(self):
-		oauth_hook = OAuthHook(access_token=self.authd['oauth_token'], access_token_secret=self.authd['oauth_token_secret'], consumer_key=self.authd['consumer_key'], consumer_secret=self.authd['consumer_secret'])
-		request = requests.Request("POST", GET_TOKEN_URL, {'oauth_session_handle': self.authd['oauth_session_handle']})
-                request = oauth_hook(request)
+		# Generate values used in request.
+                timestamp = int(time.time())
+                signature = "%s%%26%s" % (self.authd['consumer_secret'], 
+					self.authd['oauth_token_secret'])
+
+		# Generate the URL to use for this request.
+                FMT = "%s?oauth_consumer_key=%s&oauth_signature_method=PLAINTEXT&" \
+			"oauth_verion=1.0&oauth_token=%s&oauth_signature=%s" \
+			"&oauth_timestamp=%s&oauth_nonce=2520167660&oauth_session_handle=%s"
+                URL = FMT % (GET_TOKEN_URL,
+			self.authd['consumer_key'],
+			self.authd['oauth_token'],
+                        signature, timestamp,
+			self.authd['oauth_session_handle'])
+
+		# Send a request to refresh the token.
+		request = requests.Request("POST", URL)
 		session = requests.session()
                 response = session.send(request.prepare())
+
+		# Parse response, write to file.
 		qs = parse_qs(response.content)
 		self.authd.update(map(lambda d: (d[0], (d[1][0])), qs.items()))
 		self.write_authvals_csv(self.authd, self.authf)
@@ -107,19 +128,28 @@ class YHandler(object):
 		return resp 
 
 	def api_req(self, querystring, req_meth='GET', data=None, headers=None):
+		# Generate the URL using the base and the given query.
 		base_url = 'http://fantasysports.yahooapis.com/fantasy/v2/'
 		url = base_url + querystring
-		self.refresh_token()
+
+		# If we don't have credientials, attempt to register for them.
 		if ('oauth_token' not in self.authd) or \
 			('oauth_token_secret' not in self.authd) or \
 			(not (self.authd['oauth_token'] and self.authd['oauth_token_secret'])):
 			self.reg_user()
+
+		# Actually perform the request.
 		query = self.call_api(url, req_meth, data=data, headers=headers)
-		if query.status_code != 200: #We have both authtokens but are being rejected. Assume token expired. This could be a LOT more robust
+
+
+		# If we received a bad response, assume expired token.
+		if query.status_code != 200: 
 			self.refresh_token()
 			query = self.call_api(url, req_meth, data=data, headers=headers)
+
+		# We still got an error response - log and raise.
 		if query.status_code != 200:
-			print "Query failed: %s" % query.status_code
-			print query.text
-			raise AuthException()
+			raise AuthException(query.status_code, query.text)
+
+		# Success!
 		return query

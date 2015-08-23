@@ -4,9 +4,9 @@ from utils import *
 
 
 class FantasyApi(object):
-	def __init__(self):
+	def __init__(self, league_key):
 		self.handler = YHandler('auth.csv')
-		self.league_key = LEAGUE_ID
+		self.league_key = league_key 
 
 	def get(self, url):
 		resp = self.handler.api_req(url)
@@ -95,45 +95,105 @@ class Team(object):
 		self.api.handler.api_req(XACTION_URL, req_meth="POST", 
 				data=add_str, headers=head )
 
-	def replace(self, player, new_player):
+	def replace(self, old_player, new_player):
 		"""
 		Drops one player, adds another. 
 		"""
-#		assert player.owned
-#		assert not new_player.owned
-#		assert player.team_key == self.team_key 
-		replace_str = ADD_DROP_XML % (new_player.player_key, self.team_key,
-					      player.player_key, self.team_key)
+		try:
+			assert old_player.owned
+			assert not new_player.owned
+			assert old_player.team_key == self.team_key 
+			replace_str = ADD_DROP_XML % (new_player.player_key, self.team_key,
+						      old_player.player_key, self.team_key)
+			head = {'Content-Type': 'application/xml'}
+			self.api.handler.api_req(XACTION_URL, req_meth="POST", 
+					data=replace_str, headers=head )
+		except AuthException, e:
+			# For some reashon, the API raises an error when dropping a player
+			# and indicates that player X is "not on your roster".  It appears
+			# benign.
+			if "not on your roster" in e.text:
+				pass
+			else:
+				raise
+
+	def set_position(self, player, pos):
+		"""
+		Sets the given player to the specified position.
+		"""
+		# TODO: Get week from better source than 'player'
+		assert pos in player.valid_positions() or pos == 'BN'
+		player_xml = PLAYER_POS_XML % (player.player_key, pos) 
+		roster_xml = ROSTER_XML % (player.current_week, player_xml)
+
+		url = "team/%s/roster" % self.team_key 
 		head = {'Content-Type': 'application/xml'}
-		self.api.handler.api_req(XACTION_URL, req_meth="POST", 
-				data=replace_str, headers=head )
-	
+		self.api.handler.api_req(url, 'PUT', data=roster_xml, headers=head)
+
+	def empty_positions(self):
+		"""
+		Returns a list of positions on the team which are not filled.
+		"""
+		positions = ['QB', 'WR', 'WR', 'RB', 'RB', 'TE', 'W/R/T', 'K', 'DEF']
+		for player in self.players:
+			curr_pos = player.current_position
+
+			# Only count players not on the bench, since we don't count 
+			# 'BN' as an eligible position.
+			if curr_pos != 'BN':
+				# Remove this player's position from the list
+				# since it is accounted for.
+				del positions[positions.index(curr_pos)]
+		return positions
+
+	def benched_players(self, pos=None):
+		"""
+		Returns all benched players on this team.
+		If a position is given, will only return players which can
+		play the given position.
+		"""
+		_players = []
+		for player in self.players:
+			if player.current_position == 'BN':
+				if not pos or pos in player.valid_positions():
+					_players.append(player)
+		return _players
+			
+
 	@property
 	def players(self):
-		# Get JSON from server
-		url = TEAM_PLAYERS_QUERY % self.team_key
-		players_json = self.api.get(url)
-		players = players_json['team'][1]['players']
+		# Get players JSON from roster resource.
+		url = "team/%s/roster/players?format=json" % self.team_key
+		self.roster_json = self.api.get(url)
+		players = self.roster_json['team'][1]['roster']['0']['players']
 		count = players['count']
-		
+
 		# Set attributes based on the received json 
 		_players = []
 		for i in range(count):
 			p = Player(players[str(i)], self.api, self) 
 			_players.append(p)
 		return _players
-
+	
 
 class Player(object):
 	def __init__(self, player_json, api, team=None):
 		self.api = api 
 		self.player_json = player_json
 		self.team = team
-
-		# Set a bunch of attrs
-		for thing in self.player_json['player'][0]:
-			if isinstance(thing, dict):
-				for k,v in thing.items():
+		self.status = OK 
+		
+		# Set as many attributes as we can from the JSON
+		for block in self.player_json['player']:
+			if isinstance(block, list):
+				# If this is a list, iterate through it.
+				for thing in block:
+					if isinstance(thing, dict):
+						for k,v in thing.items():
+							setattr(self, k, v)
+			elif isinstance(block, dict):
+				# If it is a dict, set attributes.
+				for k,v in block.items():
 					setattr(self, k, v)
 
 		# Redo some fields so they are proper Python types, etc. 
@@ -148,6 +208,9 @@ class Player(object):
 			return False
 		return self.player_key == other.player_key
 
+	def __str__(self):
+		return self.full_name
+
 	@property
 	def percent_owned(self):
 		url = "player/%s/percent_owned?format=json" % self.player_key
@@ -158,9 +221,31 @@ class Player(object):
 				_percent_owned = d['value']
 		return _percent_owned
 
+	def valid_positions(self):
+		"""
+		Returns list of valid positions for this player.
+		"""
+		positions = []
+		for position_dict in self.eligible_positions:
+				positions.append(position_dict['position'])
+		return positions
+
+	@property
+	def current_position(self):
+		return self.selected_position[1]['position']
+
+	@property
+	def current_week(self):
+		return self.selected_position[0]['week']
+
+	def stats(self):
+		url = "player/%s/stats?format=json" % self.player_key
+		resp = self.api.get(url)
+		return resp
+
 	def _get_ownership(self):
 		# Build URL
-		base = "league/%s/players;" % LEAGUE_ID
+		base = "league/%s/players;" % self.api.league_key 
                 specific = "player_keys=%s/ownership?format=json" % self.player_key	
 		url = base + specific
 

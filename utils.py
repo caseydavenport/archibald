@@ -22,6 +22,17 @@ POSITIONS = {
 # Generate the league ID
 LEAGUE_ID="%s.l.%s" % (GAME_KEY, LEAGUE_NO)
 
+# Possible player status fields
+INJURED = "IR" 
+DISABLED = "DL"
+NOT_ACTIVE = "NA"
+PROBABLE = "P"
+QUESTIONABLE = "Q"
+OUT = "O"
+OK = "OK"
+BAD_STATUSES = [INJURED, DISABLED, NOT_ACTIVE, 
+		PROBABLE, QUESTIONABLE, OUT]
+
 # Player statuses
 ALL = "A"
 FREE_AGENT = "FA"
@@ -89,6 +100,27 @@ ADD_DROP_XML = """<?xml version='1.0'?>
     </players>  
   </transaction>  
 </fantasy_content>
+"""
+
+ROSTER_XML = """<?xml version="1.0"?>  
+<fantasy_content>  
+  <roster>  
+    <coverage_type>week</coverage_type>  
+    <week>%s</week>  
+    <players>  
+
+       %s
+
+    </players>  
+  </roster>  
+</fantasy_content> 
+"""
+
+PLAYER_POS_XML = """
+<player>
+  <player_key>%s</player_key>
+  <position>%s</position>
+</player>
 """
 
 TRADE_XML = """
