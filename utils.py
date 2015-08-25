@@ -4,8 +4,6 @@ REQUEST_TOKEN_URL = 'https://api.login.yahoo.com/oauth/v2/get_request_token'
 CALLBACK_URL = 'oob'
 
 GAME_KEY=348
-LEAGUE_NO=697783
-
 # Positions, and the nubmer of each per-team.
 POSITIONS = {
 	'RB':  1, 
@@ -18,9 +16,6 @@ POSITIONS = {
 	'K,': 1,
 	'BN': 5,
 }
-
-# Generate the league ID
-LEAGUE_ID="%s.l.%s" % (GAME_KEY, LEAGUE_NO)
 
 # Possible player status fields
 INJURED = "IR" 
@@ -39,13 +34,6 @@ FREE_AGENT = "FA"
 WAIVER = "W"
 TAKEN = "T"
 KEEPERS = "K"
-
-# API URLs
-TEAMS_QUERY="leagues;league_keys=%s/teams?format=json" % LEAGUE_ID
-ALL_PLAYERS_QUERY = "league/%s/players?format=json" % LEAGUE_ID 
-STATUS_PLAYERS_QUERY = "league/%s/players;status=%s"
-TEAM_PLAYERS_QUERY = "team/%s/players?format=json"   # %s = team_key
-XACTION_URL = "league/%s/transactions" % LEAGUE_ID
 
 # Add
 ADD_PLAYER_XML = """<?xml version='1.0'?>  

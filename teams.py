@@ -7,6 +7,7 @@ class FantasyApi(object):
 	def __init__(self, league_key):
 		self.handler = YHandler('auth.csv')
 		self.league_key = league_key 
+		self.game_key = GAME_KEY
 
 	def get(self, url):
 		resp = self.handler.api_req(url)
@@ -18,7 +19,7 @@ class FantasyApi(object):
 		return Team(team, self)
 
 	def all_teams(self):
-		url = TEAMS_QUERY
+		url = "leagues;league_keys=%s/teams?format=json" % self.league_key
 		resp = self.get(url)
 		teams = resp['leagues']['0']['league'][1]['teams']
 		count = int(teams['count'])
@@ -29,20 +30,42 @@ class FantasyApi(object):
 			_teams.append(Team(teams[str(i)], self))
 		return _teams
 
-	def players(self, pos=None, status=None, sort=None, count=25, start=0):
+	def stat_categories(self):
+		"""
+		Retuns valid stat categories for NFL 2015
+		"""
+		url = "game/%s/stat_categories?format=json" % self.game_key
+		resp = self.get(url)
+
+		# Populate list with found stats
+		_stats = []
+		for stat_json in resp['game'][1]['stat_categories']['stats']:
+			_stats.append(StatField(stat_json))
+		return _stats 
+
+	def players(self, pos=None, status=None, sort=None, count=25, start=0,
+		sort_type="season", sort_season="2014"):
 		"""
 		Return a list of players using the given filters.
 		By default, returns 25 players starting from 0, with no other 
 		filter criteria.
 		"""
+		# TODO: For some reason, the API doesn't like W/R/T - it returns an empty list.
+		# For now, replace this position with RB
+		if pos == "W/R/T":
+			print "Hack: Replacing W/R/T with RB"
+			pos = "RB"
+
 		# Decide the URL to use for this query
 		filter_str = "count=%s&start=%s" % (count, start)
-		if sort:
-			filter_str = "&sort=%s" % sort
+		filter_str += "&sort_type=%s&sort_season=%s" % (sort_type, sort_season)
 		if pos:
 			filter_str += "&position=%s" % pos
 		if status:
 			filter_str += "&status=%s" % status
+		if sort:
+			filter_str += "&sort=%s" % sort
+
 		url = "league/%s/players?%s&format=json" % (self.league_key, filter_str) 
 		
 		# Query and find players json
@@ -61,6 +84,7 @@ class Team(object):
 	def __init__(self, team_json, api):
 		self.team_json = team_json
 		self.api = api
+		self.league_key = api.league_key
 
 		# Set attributes based on the received team_json
 		for x in self.team_json['team'][0]:
@@ -80,33 +104,62 @@ class Team(object):
 				l.append(player)
 		return l
 
+	def get_player(self, player_key):
+		for player in self.players:
+			if player.player_key == player_key:
+				return player
+		raise KeyError("Player not found on team")
+
 	def drop(self, player):
 		assert player.droppable 
 		assert player.team_key == self.team_key 
+		url = "league/%s/transactions" % self.league_key
 		drop_str = DEL_PLAYER_XML % (player.player_key, self.team_key)
 		head = {'Content-Type': 'application/xml'}
-		self.api.handler.api_req(XACTION_URL, req_meth="POST", 
-				data=drop_str, headers=head )
+
+		try:	
+			self.api.handler.api_req(url, req_meth="POST", 
+					data=drop_str, headers=head )
+		except AuthException, e:
+			# For some reashon, the API raises an error when dropping a player
+			# and indicates that player X is "not on your roster".  It appears
+			# benign.
+			if "not on your roster" in e.text:
+				pass
+			else:
+				raise
 
 	def add(self, player):
 		assert not player.owned
+		url = "league/%s/transactions" % self.league_key
 		add_str = ADD_PLAYER_XML % (player.player_key, self.team_key)	
 		head = {'Content-Type': 'application/xml'}
-		self.api.handler.api_req(XACTION_URL, req_meth="POST", 
-				data=add_str, headers=head )
+		try:
+			self.api.handler.api_req(url, req_meth="POST", 
+					data=add_str, headers=head )
+		except AuthException, e:
+			# For some reashon, the API raises an error when dropping a player
+			# and indicates that player X is "not on your roster".  It appears
+			# benign.
+			if "on another team's roster" in e.text:
+				pass
+			else:
+				raise
 
 	def replace(self, old_player, new_player):
 		"""
 		Drops one player, adds another. 
 		"""
+		assert old_player.owned
+		assert not new_player.owned
+		assert old_player.team_key == self.team_key 
+		url = "league/%s/transactions" % self.league_key
+		replace_str = ADD_DROP_XML % (new_player.player_key, self.team_key,
+					      old_player.player_key, self.team_key)
+		head = {'Content-Type': 'application/xml'}
+
 		try:
-			assert old_player.owned
-			assert not new_player.owned
-			assert old_player.team_key == self.team_key 
-			replace_str = ADD_DROP_XML % (new_player.player_key, self.team_key,
-						      old_player.player_key, self.team_key)
-			head = {'Content-Type': 'application/xml'}
-			self.api.handler.api_req(XACTION_URL, req_meth="POST", 
+			self.api.handler.api_req(url, req_meth="POST", 
 					data=replace_str, headers=head )
 		except AuthException, e:
 			# For some reashon, the API raises an error when dropping a player
@@ -262,3 +315,18 @@ class Player(object):
 			self.owner_team_name = ""
 			self.team_key = ""
 			self.owned = False 
+
+class StatField(object):
+	def __init__(self, stat_json):
+		self.stat_json = stat_json
+		
+		# Get fields from given json.
+		self.stat_id = self.stat_json['stat']['stat_id']
+		self.sort_order = self.stat_json['stat']['sort_order']
+		self.display_name = self.stat_json['stat']['display_name']
+		self.name = self.stat_json['stat']['name']
+
+		# Create list of positions for which this stat is valid.
+		self.position_types = [] 
+		for pos in self.stat_json['stat']['position_types']:
+			self.position_types.append(pos['position_type'])

@@ -1,13 +1,21 @@
 from YHandler import *
 from teams import *
 from utils import *
+from archie import Archibald
 import json
 import time
 import datetime
 
-# Create a handler to access Yahoo!
-api = FantasyApi(LEAGUE_ID) 
-team_key = "348.l.697783.t.4"
+
+# Values for test league
+team_no = 4
+league_no = 697783
+
+# Generate keys for the desired leage / team
+team_key = "348.l.%s.t.%s" % (league_no, team_no) 
+league_id = "348.l.%s" % league_no
+
+api = FantasyApi(league_id) 
 
 thing = raw_input("Get new token?: ")
 if thing == "true":
@@ -16,58 +24,62 @@ else:
   api.handler.refresh_token()
 
 try:
-	while True:
-		print "\n%s" % datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-	
-		# Get my team
-		myteam = api.get_team(team_key)
-		empty = myteam.empty_positions()
-		benched = myteam.benched_players()
-		players = myteam.players
-	
-		# Make sure there are no disabled players.
-		for p in players:
-			if p.status in BAD_STATUSES and not p in benched:
-				cur_pos = p.current_position
-				if p.droppable:
-					replacements = api.players(pos=cur_pos, status="FA", count=1)
-					repl = replacements[0]
-					myteam.replace(p, repl)
-					print "Replaced %s with %s" % (p, repl)
-				else:
-					# Cannot drop this player - search through bench
-					benched = myteam.benched_players(cur_pos)
-					if benched:
-						print "Swapping %s with benched player %s" % (p, benched[0])
-						myteam.set_position(p, 'BN')
-						myteam.set_position(benched[0], cur_pos)
-					else:
-						print "No benched players - look for free agents"
-					
-	
-		# Make sure there are no empty slots that could be occupied.
-		for p in benched:
-			for pos in p.valid_positions():
-				if pos in empty and p.status == OK:
-					# Player is eligible for open position, and is in OK status.
-					print "Benched player %s -> %s" % (p, pos)
-					myteam.set_position(p, pos)
-					del empty[empty.index(pos)]
-					break
 
-		# Sleep before accessing again.
-		mins = 29
-		time.sleep(mins * 60)
-	
-	#	for player in players:
-	#		eligible = api.players(pos=player.display_position,
-	#				status="FA",
-	#				count=1)
-	#		print "Player: %s, (Can drop: %s) " % (player.full_name, player.droppable)
-	#		for e in eligible:
-	#			if player.droppable:
-	#				print "Replace with: %s" % e.full_name
-	#				myteam.replace(player, e)
-	#				break
+	print "\n%s" % datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+       
+	# Get my team
+	print "Getting team"
+	myteam = api.get_team(team_key)
+	print "Getting empty positions"
+	empty = myteam.empty_positions()
+	print "Getting benched players"
+	benched = myteam.benched_players()
+	print "Getting all players"
+	players = myteam.players
+	p = players[0]
+#	print "Getting Stat Resource"
+#	stats = api.stat_categories()
+
+	# Fill empty slots
+	MAX = 15
+	MIN = 9
+	for pos in empty:
+		# Assume no bench players can fill the spot.
+		if len(players) >= MAX:
+			# If we have max players, we must drop one first.
+			# Use "percent_owned" as an initial indicator of success - drop any
+			# which noone wants.
+			for player in players:
+				if player.percent_owned < 50 and player.droppable:
+					print "Dropping unwanted player %s" % player
+					myteam.drop(player)
+					del players[players.index(player)]
+				elif player.status != OK and player.percent_owned != 100:
+					print "Dropping disabled player %s" % player
+					myteam.drop(player)
+					del players[players.index(player)]
+			if len(players) >= MAX:
+				# TODO: Still greater than max - need to pick the right
+				# player to drop.
+				pass
+				
+
+		# Find the best available free agent based on points for this position.
+		print "Finding eligible players for pos %s" % pos
+		eligible = api.players(status="FA", count=5, pos=pos, sort="PTS") 
+		for e in eligible:
+			if e.status == OK:
+				print "Filling position %s with %s" % (pos, e) 
+				myteam.add(e)
+
+				# Find the player now that he has been added to the team.
+				replaced = myteam.get_player(e.player_key)
+				myteam.set_position(replaced, pos)
+				break
+
+	empty = myteam.empty_positions()
+	print "Remaining empty: %s" % empty
+
 except AuthException, e:
 	print "Hit API error: %s" % e
+	print "Status code: %s" % e.status
