@@ -8,10 +8,18 @@ class FantasyApi(object):
 		self.handler = YHandler('auth.csv')
 		self.league_key = league_key 
 		self.game_key = GAME_KEY
+		self.league_settings = self._league_settings()
+		self.stat_categories = self._stat_categories()
 
 	def get(self, url):
 		resp = self.handler.api_req(url)
 		return resp.json()['fantasy_content']
+
+	def _league_settings(self):
+		url = "league/%s/settings?format=json" % self.league_key
+		resp = self.get(url)
+		settings = Settings(resp['league'][1]['settings'][0], self)	
+		return settings
 
 	def get_team(self, team_key):
 		url = "team/%s?format=json" % team_key
@@ -30,17 +38,28 @@ class FantasyApi(object):
 			_teams.append(Team(teams[str(i)], self))
 		return _teams
 
-	def stat_categories(self):
+	def stat_with_id(self, stat_id):
 		"""
-		Retuns valid stat categories for NFL 2015
+		Returns a tuple of StatField, StatModifier for the givne ID.
+		If the stat does not count towards fantasy points, None will be returned
+		for the modifier.
+		"""
+		cats = self.stat_categories
+		mods = self.league_settings.stat_modifiers()
+		return cats[stat_id], mods.get(stat_id)
+
+	def _stat_categories(self):
+		"""
+		Retuns valid stat categories for NFL 2015.
 		"""
 		url = "game/%s/stat_categories?format=json" % self.game_key
 		resp = self.get(url)
 
 		# Populate list with found stats
-		_stats = []
+		_stats = {}
 		for stat_json in resp['game'][1]['stat_categories']['stats']:
-			_stats.append(StatField(stat_json))
+			s = StatField(stat_json)
+			_stats[s.stat_id] = s
 		return _stats 
 
 	def players(self, pos=None, status=None, sort=None, count=25, start=0,
@@ -291,10 +310,26 @@ class Player(object):
 	def current_week(self):
 		return self.selected_position[0]['week']
 
-	def stats(self):
-		url = "player/%s/stats?format=json" % self.player_key
+	def stats(self, season=CURRENT_SEASON):
+		url = "player/%s/stats?type=season&season=%s&format=json" % (self.player_key, season)
 		resp = self.api.get(url)
-		return resp
+		
+		# Return dict
+		_stats = {}
+		for s in resp['player'][1]['player_stats']['stats']:
+			stat = PlayerStat(s)
+			_stats[stat.stat_id] = stat
+		return _stats 
+
+	def fantasy_points(self, season=CURRENT_SEASON):
+		pts = 0
+		for stat_id, stat in self.stats(season).iteritems():
+			_, mod = self.api.stat_with_id(stat_id)
+			if mod:
+				# If a modifier exists, it means points can be earned
+				# for this stat.  Add the points to the total.
+				pts += stat.value * mod.value
+		return pts
 
 	def _get_ownership(self):
 		# Build URL
@@ -316,12 +351,41 @@ class Player(object):
 			self.team_key = ""
 			self.owned = False 
 
+
+class Settings(object):
+	def __init__(self, settings_json, api):
+		self.settings_json = settings_json
+		self.api = api
+
+		for k, v in settings_json.items():
+			setattr(self, "_%s" % k, v)
+
+	def stat_modifiers(self):
+		_mods = {}
+		for s in self._stat_modifiers['stats']:
+			m = StatModifer(s)
+			_mods[m.stat_id] = m
+		return _mods 
+
+
+class PlayerStat(object):
+	"""
+	Represents an individual player's stats in a given category.
+	"""
+	def __init__(self, stat_json):
+		self.stat_json = stat_json
+		self.stat_id = int(stat_json['stat']['stat_id'])
+		self.value = float(stat_json['stat']['value']) 
+
 class StatField(object):
+	"""
+	Represents a stat that is presnet in this league.
+	"""
 	def __init__(self, stat_json):
 		self.stat_json = stat_json
 		
 		# Get fields from given json.
-		self.stat_id = self.stat_json['stat']['stat_id']
+		self.stat_id = int(self.stat_json['stat']['stat_id'])
 		self.sort_order = self.stat_json['stat']['sort_order']
 		self.display_name = self.stat_json['stat']['display_name']
 		self.name = self.stat_json['stat']['name']
@@ -330,3 +394,21 @@ class StatField(object):
 		self.position_types = [] 
 		for pos in self.stat_json['stat']['position_types']:
 			self.position_types.append(pos['position_type'])
+
+	def __str__(self):
+		return "StatField(%s, id=%s)" % (self.name, self.stat_id)		
+
+
+class StatModifer(object):
+	"""
+	Represents the modifier used to calulate fantasy points for a given stat.
+	"""
+	def __init__(self, stat_modifier):
+		self.stat_json = stat_modifier
+		
+		self.stat_id = int(self.stat_json['stat']['stat_id'])	
+		self.bonuses = self.stat_json['stat'].get('bonuses', [])
+		self.value = float(self.stat_json['stat']['value'])
+
+	def __str__(self):
+		return "StatModifier(id=%s, points=%s)" % (self.stat_id, self.value)

@@ -1,5 +1,4 @@
 auth.csv
-*.swp
+*.sw*
 *.pyc
 *.swo
-*.swn

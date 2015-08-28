@@ -1,5 +1,5 @@
 from YHandler import *
-from teams import *
+from fantasyapi import *
 from utils import *
 import json
 import time
@@ -91,7 +91,7 @@ class Archibald(object):
 		(e.g. injured, out, etc) are in the starting lineup.
 		"""
 		for p in players:
-			if p.status in BAD_STATUSES and not p in benched:
+			if p.status != OK and not p in benched:
 				cur_pos = p.current_position
 				if p.droppable:
 					replacements = self.api.players(pos=cur_pos, status="FA", count=1, sort="PTS")

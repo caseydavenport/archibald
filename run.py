@@ -1,25 +1,18 @@
-from YHandler import *
-from teams import *
+from fantasyapi import *
 from utils import *
 from archie import Archibald
-import json
-import time
-import datetime
 
 # Values for MSB
-league_no = 597247
-team_no = 10
-
+#league_no = 597247
+#team_no = 10
 
 # Values for test league
-#team_no = 4
-#league_no = 697783
-
+team_no = 4
+league_no = 697783
 
 # Generate keys for the desired leage / team
 team_key = "348.l.%s.t.%s" % (league_no, team_no) 
 league_id = "348.l.%s" % league_no
-
 
 api = FantasyApi(league_id) 
 

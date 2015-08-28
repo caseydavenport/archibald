@@ -1,10 +1,11 @@
-GET_TOKEN_URL = 'https://api.login.yahoo.com/oauth/v2/get_token'
-AUTHORIZATION_URL = 'https://api.login.yahoo.com/oauth/v2/request_auth'
-REQUEST_TOKEN_URL = 'https://api.login.yahoo.com/oauth/v2/get_request_token'
-CALLBACK_URL = 'oob'
+# The current season year
+CURRENT_SEASON = 2015
 
+# Game key - set to NFL 2015
 GAME_KEY=348
+
 # Positions, and the nubmer of each per-team.
+# TODO: Get this from league settings.
 POSITIONS = {
 	'RB':  1, 
 	'W/R/T': 1,
@@ -25,17 +26,15 @@ PROBABLE = "P"
 QUESTIONABLE = "Q"
 OUT = "O"
 OK = "OK"
-BAD_STATUSES = [INJURED, DISABLED, NOT_ACTIVE, 
-		PROBABLE, QUESTIONABLE, OUT]
 
-# Player statuses
+# Player states 
 ALL = "A"
 FREE_AGENT = "FA"
 WAIVER = "W"
 TAKEN = "T"
 KEEPERS = "K"
 
-# Add
+# XML to add a player.
 ADD_PLAYER_XML = """<?xml version='1.0'?>  
 <fantasy_content>  
   <transaction>  
@@ -51,6 +50,7 @@ ADD_PLAYER_XML = """<?xml version='1.0'?>
 </fantasy_content>
 """
 
+# XML to drop a player.
 DEL_PLAYER_XML = """<?xml version='1.0'?>  
 <fantasy_content>  
   <transaction>  
@@ -66,6 +66,7 @@ DEL_PLAYER_XML = """<?xml version='1.0'?>
 </fantasy_content>
 """
 
+# XML to simultaneously add/drop players.
 ADD_DROP_XML = """<?xml version='1.0'?>
 <fantasy_content>  
   <transaction>  
@@ -90,6 +91,7 @@ ADD_DROP_XML = """<?xml version='1.0'?>
 </fantasy_content>
 """
 
+# Template for modifying roster - needs one or more PLAYER_POS_XMLs within.
 ROSTER_XML = """<?xml version="1.0"?>  
 <fantasy_content>  
   <roster>  
@@ -104,6 +106,8 @@ ROSTER_XML = """<?xml version="1.0"?>
 </fantasy_content> 
 """
 
+# XML for making a roster change.  One or more can be included in
+# a ROSTER_XML block.
 PLAYER_POS_XML = """
 <player>
   <player_key>%s</player_key>
@@ -111,6 +115,7 @@ PLAYER_POS_XML = """
 </player>
 """
 
+# XML to propose a trade.
 TRADE_XML = """
 <?xml version='1.0'?>  
 <fantasy_content>  
