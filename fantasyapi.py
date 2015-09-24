@@ -5,11 +5,15 @@ from utils import *
 
 class FantasyApi(object):
 	def __init__(self, league_key):
-		self.handler = YHandler('auth.csv')
+		self.handler = self.create_handler() 
 		self.league_key = league_key 
 		self.game_key = GAME_KEY
 		self.league_settings = self._league_settings()
 		self.stat_categories = self._stat_categories()
+
+	@classmethod
+	def create_handler(cls):
+		return YHandler('auth.csv')
 
 	def get(self, url):
 		resp = self.handler.api_req(url)
@@ -63,7 +67,7 @@ class FantasyApi(object):
 		return _stats 
 
 	def players(self, pos=None, status=None, sort=None, count=25, start=0,
-		sort_type="season", sort_season="2014"):
+		sort_type="season", sort_season=CURRENT_SEASON):
 		"""
 		Return a list of players using the given filters.
 		By default, returns 25 players starting from 0, with no other 
@@ -87,12 +91,16 @@ class FantasyApi(object):
 
 		url = "league/%s/players?%s&format=json" % (self.league_key, filter_str) 
 		
-		# Query and find players json
+		# Query and find players json.
 		agents = self.get(url)
 		players = agents['league'][1]['players']
-		count = int(players['count'])
-
+	
+		# If no players were found, return an empty list.
+		if len(players) == 0:
+			return []
+		
 		# Get player objects from the returned data
+		count = int(players['count'])
 		_players = []
 		for i in range(count):
 			_players.append(Player(players[str(i)], self, None))
@@ -271,6 +279,7 @@ class Player(object):
 		# Redo some fields so they are proper Python types, etc. 
 		self.full_name = self.name['full']
 		self.droppable = (self.is_undroppable == '0')
+		self.bye_week = self.bye_weeks['week']
 
 		# Set ownership fields
 		self._get_ownership()
@@ -330,6 +339,25 @@ class Player(object):
 				# for this stat.  Add the points to the total.
 				pts += stat.value * mod.value
 		return pts
+
+	def value(self):
+		"""
+		Returns a numeric value assocaited with the worth of this player.  Uses a variety of 
+		weighted metrics to calculated an estimated "worth"
+		"""
+		value_pts = 0
+
+		# First, add a weighted measure of previous season's points.  Point-for-point,
+		# these should be less valuable than points from the current season, 
+                # though depending on the point in the season, there may be more of them.
+		PREV_SEASON_MODIFIER = .35
+		last_season_pts = self.fantasy_points(CURRENT_SEASON - 1)
+		value_pts += last_season_pts * PREV_SEASON_MODIFIER
+
+		# Add points from the current season.
+		value_pts += self.fantasy_points()
+
+		return value_pts
 
 	def _get_ownership(self):
 		# Build URL

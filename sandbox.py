@@ -35,6 +35,8 @@ try:
 	players = myteam.players
 	p = players[0]
 
+	arch = Archibald(api, league_id, team_key)
+
 except AuthException, e:
 	print "Hit API error: %s" % e
 	print "Status code: %s" % e.status

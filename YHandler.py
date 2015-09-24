@@ -25,6 +25,7 @@ class YHandler(object):
 	def __init__(self, authf):
 		self.authf = authf
 		self.authd = self.get_authvals_csv(self.authf)
+		self.num_api_requests = 0
 
 
 	def get_authvals_csv(self, authf):
@@ -94,6 +95,7 @@ class YHandler(object):
 
 	def refresh_token(self):
 		# Generate values used in request.
+		print "Refreshing OAuth Token"
                 timestamp = int(time.time())
                 signature = "%s%%26%s" % (self.authd['consumer_secret'], 
 					self.authd['oauth_token_secret'])
@@ -123,8 +125,14 @@ class YHandler(object):
 		req_oauth_hook = OAuthHook(self.authd['oauth_token'], self.authd['oauth_token_secret'], self.authd['consumer_key'], self.authd['consumer_secret'], header_auth=True)
                 req = req_oauth_hook(req)
 		session = requests.session()
+		
+		# Sleep for 2 seconds to ratelimit API requests.  More than this for 
+		# too long and you'll be locked out of the API.
+		time.sleep(2)
+		self.num_api_requests += 1
+
+		# Send the request
                 resp = session.send(req.prepare())
-		#print resp.text
 		return resp 
 
 	def api_req(self, querystring, req_meth='GET', data=None, headers=None):
@@ -141,14 +149,14 @@ class YHandler(object):
 		# Actually perform the request.
 		query = self.call_api(url, req_meth, data=data, headers=headers)
 
-
 		# If we received a bad response, assume expired token.
-		if query.status_code != 200: 
+		# All 200 responses are considered success.
+		if query.status_code > 299: 
 			self.refresh_token()
 			query = self.call_api(url, req_meth, data=data, headers=headers)
 
 		# We still got an error response - log and raise.
-		if query.status_code != 200:
+		if query.status_code > 299:
 			raise AuthException(query.status_code, query.text)
 
 		# Success!

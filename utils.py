@@ -1,3 +1,5 @@
+import math
+
 # The current season year
 CURRENT_SEASON = 2015
 
@@ -26,6 +28,7 @@ PROBABLE = "P"
 QUESTIONABLE = "Q"
 OUT = "O"
 OK = "OK"
+BAD_STATUSES = [INJURED, DISABLED, NOT_ACTIVE, OUT]
 
 # Player states 
 ALL = "A"
