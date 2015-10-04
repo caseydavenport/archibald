@@ -29,7 +29,14 @@ except:
 
 try:
 	archie = Archibald(api, league_id, team_key)
-	archie.start()
+
+	while True:
+		try:
+			archie.start()
+		except AuthException, e:
+			print "Error: %s" % e
+			print "Retry in 30 minutes"
+			archie.sleep(0, 0, 30)
 except AuthException, e:
 	print "Hit API error: %s" % e
 	print "Status code: %s" % e.status

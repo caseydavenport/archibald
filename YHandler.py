@@ -128,7 +128,7 @@ class YHandler(object):
 		
 		# Sleep for 2 seconds to ratelimit API requests.  More than this for 
 		# too long and you'll be locked out of the API.
-		time.sleep(2)
+		time.sleep(.5)
 		self.num_api_requests += 1
 
 		# Send the request
@@ -139,6 +139,8 @@ class YHandler(object):
 		# Generate the URL using the base and the given query.
 		base_url = 'http://fantasysports.yahooapis.com/fantasy/v2/'
 		url = base_url + querystring
+
+		#print "-------- QUERY: %s --------" % querystring
 
 		# If we don't have credientials, attempt to register for them.
 		if ('oauth_token' not in self.authd) or \

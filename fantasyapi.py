@@ -1,6 +1,7 @@
 import json
 from YHandler import *
 from utils import *
+import random
 
 
 class FantasyApi(object):
@@ -76,8 +77,8 @@ class FantasyApi(object):
 		# TODO: For some reason, the API doesn't like W/R/T - it returns an empty list.
 		# For now, replace this position with RB
 		if pos == "W/R/T":
-			print "Hack: Replacing W/R/T with RB"
-			pos = "RB"
+			pos = random.choice(["RB", "WR", "TE"])
+			print " == HACK: Replacing W/R/T with %s ==" % pos
 
 		# Decide the URL to use for this query
 		filter_str = "count=%s&start=%s" % (count, start)
@@ -148,13 +149,7 @@ class Team(object):
 			self.api.handler.api_req(url, req_meth="POST", 
 					data=drop_str, headers=head )
 		except AuthException, e:
-			# For some reashon, the API raises an error when dropping a player
-			# and indicates that player X is "not on your roster".  It appears
-			# benign.
-			if "not on your roster" in e.text:
-				pass
-			else:
-				raise
+			pass
 
 	def add(self, player):
 		assert not player.owned
@@ -165,13 +160,7 @@ class Team(object):
 			self.api.handler.api_req(url, req_meth="POST", 
 					data=add_str, headers=head )
 		except AuthException, e:
-			# For some reashon, the API raises an error when dropping a player
-			# and indicates that player X is "not on your roster".  It appears
-			# benign.
-			if "on another team's roster" in e.text:
-				pass
-			else:
-				raise
+			pass
 
 	def replace(self, old_player, new_player):
 		"""
@@ -189,13 +178,29 @@ class Team(object):
 			self.api.handler.api_req(url, req_meth="POST", 
 					data=replace_str, headers=head )
 		except AuthException, e:
-			# For some reashon, the API raises an error when dropping a player
-			# and indicates that player X is "not on your roster".  It appears
-			# benign.
-			if "not on your roster" in e.text:
-				pass
-			else:
-				raise
+			pass
+
+	def swap_positions(self, p1, p2):
+		"""
+		Swaps two player positions in the lineup.
+		"""
+		# If one player is not editible, then we can't swap - log and return.
+		if not p1.is_editable or not p2.is_editable:
+			print "Cannot edit player(s), skipping swap"
+			return
+
+		# Get current positions
+		pos1 = p1.current_position
+		pos2 = p2.current_position
+
+		# Bench player2 so we can stick player1 in that slot.
+		self.set_position(p2, "BN")
+
+		# Put player1 in player2's spot.
+		self.set_position(p1, pos2)
+
+		# Put player2 in player1's original spot.
+		self.set_position(p2, pos1)
 
 	def set_position(self, player, pos):
 		"""
@@ -209,6 +214,7 @@ class Team(object):
 		url = "team/%s/roster" % self.team_key 
 		head = {'Content-Type': 'application/xml'}
 		self.api.handler.api_req(url, 'PUT', data=roster_xml, headers=head)
+
 
 	def empty_positions(self):
 		"""
@@ -262,6 +268,11 @@ class Player(object):
 		self.player_json = player_json
 		self.team = team
 		self.status = OK 
+		self._percent_owned = None
+		self._ownership_type = None
+		self._owner_team_name = None
+		self._team_key = None
+		self._owned = None
 		
 		# Set as many attributes as we can from the JSON
 		for block in self.player_json['player']:
@@ -281,26 +292,40 @@ class Player(object):
 		self.droppable = (self.is_undroppable == '0')
 		self.bye_week = self.bye_weeks['week']
 
-		# Set ownership fields
-		self._get_ownership()
-	
+		# Convert int to a boolean, make sure field exists.
+		# Players not on a team do not have this attribute.
+		if hasattr(self, "is_editable"):
+			self.is_editable = (self.is_editable == 1)
+		else:
+			self.is_editable = False
+
 	def __eq__(self, other):
 		if not isinstance(other, Player):
 			return False
 		return self.player_key == other.player_key
 
+	def __ne__(self, other):
+		return not self.__eq__(other)
+
+	def __hash__(self):
+		return hash(self.player_key)
+
 	def __str__(self):
 		return self.full_name
 
 	@property
+	def is_bye(self):
+		return self.bye_week == self.current_week
+
+	@property
 	def percent_owned(self):
-		url = "player/%s/percent_owned?format=json" % self.player_key
-		ownership = self.api.get(url)
-		_percent_owned = 0
-		for d in ownership['player'][1]['percent_owned']:
-			if 'value' in d:
-				_percent_owned = d['value']
-		return _percent_owned
+		if self._percent_owned is None:
+			url = "player/%s/percent_owned?format=json" % self.player_key
+			ownership = self.api.get(url)
+			for d in ownership['player'][1]['percent_owned']:
+				if 'value' in d:
+					self._percent_owned = d['value']
+		return self._percent_owned
 
 	def valid_positions(self):
 		"""
@@ -347,17 +372,34 @@ class Player(object):
 		"""
 		value_pts = 0
 
-		# First, add a weighted measure of previous season's points.  Point-for-point,
-		# these should be less valuable than points from the current season, 
-                # though depending on the point in the season, there may be more of them.
-		PREV_SEASON_MODIFIER = .35
-		last_season_pts = self.fantasy_points(CURRENT_SEASON - 1)
-		value_pts += last_season_pts * PREV_SEASON_MODIFIER
-
 		# Add points from the current season.
 		value_pts += self.fantasy_points()
 
 		return value_pts
+
+	@property
+	def owner_team_name(self):
+		if self._owner_team_name is None:
+			self._get_ownership()
+		return self._owner_team_name
+
+	@property
+	def ownership_type(self):
+		if self._ownership_type is None:
+			self._get_ownership()
+		return self._ownership_type
+
+	@property
+	def team_key(self):
+		if self._team_key is None:
+			self._get_ownership()
+		return self._team_key
+
+	@property
+	def owned(self):
+		if self._owned is None:
+			self._get_ownership()
+		return self._owned
 
 	def _get_ownership(self):
 		# Build URL
@@ -369,15 +411,15 @@ class Player(object):
 		resp = self.api.get(url)
 		o = resp['league'][1]['players']['0']['player'][1]['ownership']
 		try:
-			self.owner_team_name = o['owner_team_name']
-			self.ownership_type = o['ownership_type']
-			self.team_key = o['owner_team_key']
-			self.owned = True
+			self._owner_team_name = o['owner_team_name']
+			self._ownership_type = o['ownership_type']
+			self._team_key = o['owner_team_key']
+			self._owned = True
 		except KeyError:
-			self.ownership_type = ""
-			self.owner_team_name = ""
-			self.team_key = ""
-			self.owned = False 
+			self._ownership_type = ""
+			self._owner_team_name = ""
+			self._team_key = ""
+			self._owned = False 
 
 
 class Settings(object):
