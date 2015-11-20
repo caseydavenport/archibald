@@ -1,0 +1,10 @@
+[ConsumerInfo]
+  ConsumerSecret = "secret"
+  ConsumerKey = "key"
+
+[Secrets]
+  RequestToken = ""
+  RequestSecret = ""
+  Verifier = ""
+  AccessToken = ""
+  AccessSecret = ""
