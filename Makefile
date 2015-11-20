@@ -12,6 +12,7 @@ ${GOPATH}/bin/archie: ${FILES}
 .PHONY:
 deps:
 	go get github.com/dghubble/oauth1
+	go get github.com/BurntSushi/toml
 
 clean:
 	rm ${GOPATH}/bin/${BIN}

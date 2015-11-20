@@ -2,3 +2,4 @@ auth.csv
 *.sw*
 *.pyc
 *.swo
+*.toml
