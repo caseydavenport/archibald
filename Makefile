@@ -13,6 +13,7 @@ ${GOPATH}/bin/archie: ${FILES}
 deps:
 	go get github.com/dghubble/oauth1
 	go get github.com/BurntSushi/toml
+	go get github.com/kardianos/osext
 
 clean:
 	rm ${GOPATH}/bin/${BIN}

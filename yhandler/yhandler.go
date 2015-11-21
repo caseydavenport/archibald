@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"github.com/BurntSushi/toml"
 	"github.com/dghubble/oauth1"
+	"github.com/kardianos/osext"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -21,25 +23,31 @@ const consumerKey string = ""
 const consumerSecret string = ""
 
 type YahooHandler struct {
-	Config TomlConfig
+	ConfigFile string
+	Config     TomlConfig
 }
 
 func (y *YahooHandler) LoadSecrets() {
 	// Attempt to load from file first.
-	fmt.Printf("Attempt to load config file\n")
-	var configFile = "config.toml"
-	var tomlConfig TomlConfig
+	dir, err := osext.ExecutableFolder()
+	if err != nil {
+		fmt.Printf("Failed to get running dir: %s\n", err)
+	}
 
-	_, err := toml.DecodeFile(configFile, &tomlConfig)
+	y.ConfigFile = filepath.Join(dir, "config.toml")
+	var tomlConfig TomlConfig
+	fmt.Printf("Attempt to load config file: %s\n", y.ConfigFile)
+
+	_, err = toml.DecodeFile(y.ConfigFile, &tomlConfig)
 	if err != nil {
 		fmt.Printf("Failed to load secrets: %s\n", err)
-		return
+		os.Exit(1)
 	}
 	y.Config = tomlConfig
 	fmt.Printf("Loaded config: %s\n", tomlConfig)
 
 	if y.Config.Secrets.AccessToken == "" {
-		fmt.Printf("Unable to load config - authenticating. \n")
+		fmt.Printf("No config present - generating. \n")
 		y.Config.Secrets = y.GenerateSecrets()
 		y.SaveSecrets()
 	}
@@ -51,10 +59,10 @@ func (y *YahooHandler) SaveSecrets() {
 	err := toml.NewEncoder(buf).Encode(y.Config)
 	if err != nil {
 		fmt.Printf("Error: %s\n", err)
-		return
+		os.Exit(1)
 	}
 	fmt.Printf(buf.String())
-	err = ioutil.WriteFile("config.toml", buf.Bytes(), 0644)
+	err = ioutil.WriteFile(y.ConfigFile, buf.Bytes(), 0644)
 	if err != nil {
 		fmt.Print("Error writing config: %s", err)
 	}
@@ -67,25 +75,42 @@ func (y YahooHandler) Get(path string) {
 		y.LoadSecrets()
 	}
 
-	config := oauth1.NewConfig(consumerKey, consumerSecret)
+	if y.Config.ConsumerInfo.ConsumerSecret == "" {
+		fmt.Printf("Missing ConsumerSecret")
+		os.Exit(1)
+	}
+	if y.Config.ConsumerInfo.ConsumerKey == "" {
+		fmt.Printf("Missing ConsumerKey")
+		os.Exit(1)
+	}
+	if y.Config.Secrets.AccessSecret == "" {
+		fmt.Printf("Missing AccessSecret")
+		os.Exit(1)
+	}
+	if y.Config.ConsumerInfo.AccessKey == "" {
+		fmt.Printf("Missing AccessKey")
+		os.Exit(1)
+	}
+
+	config := oauth1.NewConfig(y.Config.ConsumerInfo.ConsumerKey, y.Config.ConsumerInfo.ConsumerSecret)
 	token := oauth1.NewToken(y.Config.Secrets.AccessToken, y.Config.Secrets.AccessSecret)
 	httpClient := config.Client(oauth1.NoContext, token)
 
 	// Request from the API.
-	base := "http://fantasysports.yahooapis.com/fantasy/v2/"
+	base := "https://fantasysports.yahooapis.com/fantasy/v2/"
 	url := fmt.Sprint(base, path)
-	fmt.Printf("GET url: %s", url)
+	fmt.Printf("GET url: %s\n", url)
 	resp, err := httpClient.Get(url)
 	if err != nil {
 		fmt.Printf("Error: %s", err)
-		return
+		os.Exit(1)
 	}
 
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Printf("Error: %s", err)
-		return
+		os.Exit(1)
 	}
 
 	fmt.Printf("Raw response: \n%v\n", string(body))
@@ -94,9 +119,10 @@ func (y YahooHandler) Get(path string) {
 func (y YahooHandler) GenerateSecrets() Secrets {
 	fmt.Printf("Authenticating\n")
 
+	// Requires that ConsumerInfo has been setup.
 	config := &oauth1.Config{
-		ConsumerKey:    consumerKey,
-		ConsumerSecret: consumerSecret,
+		ConsumerKey:    y.Config.ConsumerInfo.ConsumerKey,
+		ConsumerSecret: y.Config.ConsumerInfo.ConsumerSecret,
 		CallbackURL:    "oob",
 		Endpoint: oauth1.Endpoint{
 			RequestTokenURL: getReqTokenUrl,
@@ -109,7 +135,7 @@ func (y YahooHandler) GenerateSecrets() Secrets {
 	requestToken, requestSecret, err := config.RequestToken()
 	if err != nil {
 		fmt.Printf("Error getting requestToken: %s\n", err)
-		return Secrets{}
+		os.Exit(1)
 	}
 	fmt.Printf("Got request token/secret: %s/%s\n", requestToken, requestSecret)
 
@@ -117,7 +143,7 @@ func (y YahooHandler) GenerateSecrets() Secrets {
 	authURL, err := config.AuthorizationURL(requestToken)
 	if err != nil {
 		fmt.Printf("Error getting authorization URL: %s\n", err)
-		return Secrets{}
+		os.Exit(1)
 	}
 	fmt.Printf("Auth URL: %s\n", authURL)
 
@@ -132,7 +158,7 @@ func (y YahooHandler) GenerateSecrets() Secrets {
 	accessToken, accessSecret, err := config.AccessToken(requestToken, requestSecret, verifier)
 	if err != nil {
 		fmt.Printf("Error getting access token/secret: %s\n", err)
-		return Secrets{}
+		os.Exit(1)
 	}
 
 	// Create a secrets struct to hold all the token stuff.
